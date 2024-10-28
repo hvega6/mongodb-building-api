@@ -133,4 +133,59 @@ router.delete("/class/:id", async (req, res) => {
   else res.send(result).status(200);
 });
 
+// Get the weighted average grade for a class
+router.get("/class/:id/average", async (req, res) => {
+  let collection = await db.collection("grades");
+  let query = { class_id: Number(req.params.id) };
+
+  let results = await collection.find(query).toArray();
+
+  if (!results || results.length === 0) {
+    return res.send("Not found").status(404);
+  }
+
+  let totalWeightedScore = 0;
+  let totalStudents = 0; // Track the number of students
+
+  results.forEach(entry => {
+    const examWeight = 0.65;
+    const homeworkWeight = 0.10;
+    const quizWeight = 0.25; // Remaining weight for quizzes
+
+    // Initialize scores
+    let examScore = 0;
+    let homeworkScore = 0;
+    let quizScore = 0;
+
+    // Calculate scores only if they are valid numbers
+    entry.scores.forEach(score => {
+      if (typeof score.score === 'number') {
+        if (score.type === 'exam') {
+          examScore += score.score;
+        } else if (score.type === 'homework') {
+          homeworkScore += score.score;
+        } else if (score.type === 'quiz') {
+          quizScore += score.score;
+        }
+      }
+    });
+
+    // Calculate the weighted score only if there are scores
+    if (examScore > 0 || homeworkScore > 0 || quizScore > 0) {
+      let weightedScore = (examScore * examWeight) + (homeworkScore * homeworkWeight) + (quizScore * quizWeight);
+      totalWeightedScore += weightedScore;
+      totalStudents++; // Increment only if the student has scores
+    }
+  });
+
+  // Check if there are any students with scores to avoid division by zero
+  if (totalStudents === 0) {
+    return res.send("No valid scores found").status(404);
+  }
+
+  let classAverage = totalWeightedScore / totalStudents; // Calculate class average
+
+  res.send({ classAverage }).status(200);
+});
+
 export default router;

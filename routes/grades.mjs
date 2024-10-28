@@ -186,6 +186,7 @@ router.get("/class/:id/average", async (req, res) => {
   let classAverage = totalWeightedScore / totalStudents; // Calculate class average
 
   res.send({ classAverage }).status(200);
+  
 });
 
 export default router;

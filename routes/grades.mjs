@@ -4,6 +4,11 @@ import { ObjectId } from "mongodb";
 
 const router = express.Router();
 
+// Function to validate ObjectId
+const isValidObjectId = (id) => {
+  return ObjectId.isValid(id) && (String(new ObjectId(id)) === id);
+};
+
 // Create a single grade entry
 router.post("/", async (req, res) => {
   let collection = await db.collection("grades");
@@ -16,53 +21,78 @@ router.post("/", async (req, res) => {
   }
 
   let result = await collection.insertOne(newDocument);
-  res.send(result).status(204);
+  res.status(201).send(result); // Use 201 for resource creation
 });
 
 // Get a single grade entry
 router.get("/:id", async (req, res) => {
   let collection = await db.collection("grades");
+  
+  // Validate ObjectId
+  if (!isValidObjectId(req.params.id)) {
+    return res.status(400).send("Invalid ID format");
+  }
+
   let query = { _id: new ObjectId(req.params.id) };
   let result = await collection.findOne(query);
 
-  if (!result) res.send("Not found").status(404);
-  else res.send(result).status(200);
+  if (!result) {
+    return res.status(404).send("Not found");
+  } else {
+    return res.status(200).send(result);
+  }
 });
 
 // Add a score to a grade entry
 router.patch("/:id/add", async (req, res) => {
   let collection = await db.collection("grades");
-  let query = { _id: new ObjectId(req.params.id) };
+  
+  // Validate ObjectId
+  if (!isValidObjectId(req.params.id)) {
+    return res.status(400).send("Invalid ID format");
+  }
 
+  let query = { _id: new ObjectId(req.params.id) };
   let result = await collection.updateOne(query, {
     $push: { scores: req.body },
   });
 
-  if (!result) res.send("Not found").status(404);
-  else res.send(result).status(200);
+  if (result.modifiedCount === 0) res.status(404).send("Not found");
+  else res.status(200).send(result);
 });
 
 // Remove a score from a grade entry
 router.patch("/:id/remove", async (req, res) => {
   let collection = await db.collection("grades");
-  let query = { _id: new ObjectId(req.params.id) };
+  
+  // Validate ObjectId
+  if (!isValidObjectId(req.params.id)) {
+    return res.status(400).send("Invalid ID format");
+  }
 
+  let query = { _id: new ObjectId(req.params.id) };
   let result = await collection.updateOne(query, {
     $pull: { scores: req.body },
   });
 
-  if (!result) res.send("Not found").status(404);
-  else res.send(result).status(200);
+  if (result.modifiedCount === 0) res.status(404).send("Not found");
+  else res.status(200).send(result);
 });
 
 // Delete a single grade entry
 router.delete("/:id", async (req, res) => {
   let collection = await db.collection("grades");
+  
+  // Validate ObjectId
+  if (!isValidObjectId(req.params.id)) {
+    return res.status(400).send("Invalid ID format");
+  }
+
   let query = { _id: new ObjectId(req.params.id) };
   let result = await collection.deleteOne(query);
 
-  if (!result) res.send("Not found").status(404);
-  else res.send(result).status(200);
+  if (result.deletedCount === 0) res.status(404).send("Not found");
+  else res.status(200).send(result);
 });
 
 // Get route for backwards compatibility
@@ -80,8 +110,8 @@ router.get("/learner/:id", async (req, res) => {
 
   let result = await collection.find(query).toArray();
 
-  if (!result) res.send("Not found").status(404);
-  else res.send(result).status(200);
+  if (!result || result.length === 0) res.status(404).send("Not found");
+  else res.status(200).send(result);
 });
 
 // Delete a learner's grade data
@@ -91,8 +121,8 @@ router.delete("/learner/:id", async (req, res) => {
 
   let result = await collection.deleteOne(query);
 
-  if (!result) res.send("Not found").status(404);
-  else res.send(result).status(200);
+  if (result.deletedCount === 0) res.status(404).send("Not found");
+  else res.status(200).send(result);
 });
 
 // Get a class's grade data
@@ -105,8 +135,8 @@ router.get("/class/:id", async (req, res) => {
 
   let result = await collection.find(query).toArray();
 
-  if (!result) res.send("Not found").status(404);
-  else res.send(result).status(200);
+  if (!result || result.length === 0) res.status(404).send("Not found");
+  else res.status(200).send(result);
 });
 
 // Update a class id
@@ -118,8 +148,8 @@ router.patch("/class/:id", async (req, res) => {
     $set: { class_id: req.body.class_id },
   });
 
-  if (!result) res.send("Not found").status(404);
-  else res.send(result).status(200);
+  if (result.modifiedCount === 0) res.status(404).send("Not found");
+  else res.status(200).send(result);
 });
 
 // Delete a class
@@ -129,8 +159,8 @@ router.delete("/class/:id", async (req, res) => {
 
   let result = await collection.deleteMany(query);
 
-  if (!result) res.send("Not found").status(404);
-  else res.send(result).status(200);
+  if (result.deletedCount === 0) res.status(404).send("Not found");
+  else res.status(200).send(result);
 });
 
 // Get the weighted average grade for a class
@@ -141,7 +171,7 @@ router.get("/class/:id/average", async (req, res) => {
   let results = await collection.find(query).toArray();
 
   if (!results || results.length === 0) {
-    return res.send("Not found").status(404);
+    return res.status(404).send("Not found");
   }
 
   let totalWeightedScore = 0;
@@ -180,13 +210,162 @@ router.get("/class/:id/average", async (req, res) => {
 
   // Check if there are any students with scores to avoid division by zero
   if (totalStudents === 0) {
-    return res.send("No valid scores found").status(404);
+    return res.status(404).send("No valid scores found");
   }
 
   let classAverage = totalWeightedScore / totalStudents; // Calculate class average
 
-  res.send({ classAverage }).status(200);
-  
+  res.status(200).send({ classAverage });
+});
+
+// GET route for statistics
+router.get("/stats", async (req, res) => {
+  let collection = await db.collection("grades");
+
+  const pipeline = [
+    {
+      $addFields: {
+        weightedScore: {
+          $reduce: {
+            input: "$scores",
+            initialValue: 0,
+            in: {
+              $add: [
+                "$$value",
+                {
+                  $switch: {
+                    branches: [
+                      {
+                        case: { $eq: ["$$this.type", "exam"] },
+                        then: { $multiply: ["$$this.score", 0.65] }
+                      },
+                      {
+                        case: { $eq: ["$$this.type", "homework"] },
+                        then: { $multiply: ["$$this.score", 0.10] }
+                      },
+                      {
+                        case: { $eq: ["$$this.type", "quiz"] },
+                        then: { $multiply: ["$$this.score", 0.25] }
+                      }
+                    ],
+                    default: 0
+                  }
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      $group: {
+        _id: null,
+        totalLearners: { $sum: 1 },
+        learnersAbove50: {
+          $sum: {
+            $cond: [{ $gt: ["$weightedScore", 50] }, 1, 0]
+          }
+        }
+      }
+    },
+    {
+      $project: {
+        _id: 0,
+        totalLearners: 1,
+        learnersAbove50: 1,
+        percentageAbove50: {
+          $multiply: [
+            { $divide: ["$learnersAbove50", "$totalLearners"] },
+            100
+          ]
+        }
+      }
+    }
+  ];
+
+  try {
+    const result = await collection.aggregate(pipeline).toArray();
+    res.status(200).send(result[0] || { totalLearners: 0, learnersAbove50: 0, percentageAbove50: 0 });
+  } catch (error) {
+    res.status(500).send("Error calculating statistics");
+  }
+});
+
+// GET route for statistics by class_id
+router.get("/stats/:id", async (req, res) => {
+  let collection = await db.collection("grades");
+  const classId = Number(req.params.id);
+
+  const pipeline = [
+    { 
+      $match: { class_id: classId }
+    },
+    {
+      $addFields: {
+        weightedScore: {
+          $reduce: {
+            input: "$scores",
+            initialValue: 0,
+            in: {
+              $add: [
+                "$$value",
+                {
+                  $switch: {
+                    branches: [
+                      {
+                        case: { $eq: ["$$this.type", "exam"] },
+                        then: { $multiply: ["$$this.score", 0.65] }
+                      },
+                      {
+                        case: { $eq: ["$$this.type", "homework"] },
+                        then: { $multiply: ["$$this.score", 0.10] }
+                      },
+                      {
+                        case: { $eq: ["$$this.type", "quiz"] },
+                        then: { $multiply: ["$$this.score", 0.25] }
+                      }
+                    ],
+                    default: 0
+                  }
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      $group: {
+        _id: null,
+        totalLearners: { $sum: 1 },
+        learnersAbove50: {
+          $sum: {
+            $cond: [{ $gt: ["$weightedScore", 50] }, 1, 0]
+          }
+        }
+      }
+    },
+    {
+      $project: {
+        _id: 0,
+        totalLearners: 1,
+        learnersAbove50: 1,
+        percentageAbove50: {
+          $multiply: [
+            { $divide: ["$learnersAbove50", "$totalLearners"] },
+            100
+          ]
+        }
+      }
+    }
+  ];
+
+  try {
+    const result = await collection.aggregate(pipeline).toArray();
+    res.status(200).send(result[0] || { totalLearners: 0, learnersAbove50: 0, percentageAbove50: 0 });
+  } catch (error) {
+    res.status(500).send("Error calculating statistics");
+  }
 });
 
 export default router;

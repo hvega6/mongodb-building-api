@@ -53,4 +53,13 @@ try {
   process.exit(1); // Exit the application if the connection fails
 }
 
+async function connectToDatabase() {
+    try {
+        await client.connect();
+        console.log("Connected to the database");
+    } catch (error) {
+        console.error("Database connection error:", error);
+    }
+}
+
 export default conn.db("sample_training"); // Exporting the db directly

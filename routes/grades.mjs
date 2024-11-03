@@ -26,6 +26,7 @@ router.post("/", async (req, res) => {
 
 // Get a single grade entry
 router.get("/:id", async (req, res) => {
+  console.log("Received ID:", req.params.id); // Log the received ID
   let collection = await db.collection("grades");
   
   // Validate ObjectId
@@ -34,6 +35,7 @@ router.get("/:id", async (req, res) => {
   }
 
   let query = { _id: new ObjectId(req.params.id) };
+  console.log("Query:", query); // Log the query being executed
   let result = await collection.findOne(query);
 
   if (!result) {
@@ -285,7 +287,13 @@ router.get("/stats", async (req, res) => {
 
   try {
     const result = await collection.aggregate(pipeline).toArray();
-    res.status(200).send(result[0] || { totalLearners: 0, learnersAbove50: 0, percentageAbove50: 0 });
+    
+    // If no results, return default values
+    if (result.length === 0) {
+      return res.status(200).send({ totalLearners: 0, learnersAbove50: 0, percentageAbove50: 0 });
+    }
+
+    res.status(200).send(result[0]);
   } catch (error) {
     res.status(500).send("Error calculating statistics");
   }
@@ -363,6 +371,85 @@ router.get("/stats/:id", async (req, res) => {
   try {
     const result = await collection.aggregate(pipeline).toArray();
     res.status(200).send(result[0] || { totalLearners: 0, learnersAbove50: 0, percentageAbove50: 0 });
+  } catch (error) {
+    res.status(500).send("Error calculating statistics");
+  }
+});
+
+// GET route for statistics with weighted average above 50%
+router.get("/stats", async (req, res) => {
+  let collection = await db.collection("grades");
+
+  const pipeline = [
+    {
+      $addFields: {
+        weightedScore: {
+          $reduce: {
+            input: "$scores",
+            initialValue: 0,
+            in: {
+              $add: [
+                "$$value",
+                {
+                  $switch: {
+                    branches: [
+                      {
+                        case: { $eq: ["$$this.type", "exam"] },
+                        then: { $multiply: ["$$this.score", 0.65] }
+                      },
+                      {
+                        case: { $eq: ["$$this.type", "homework"] },
+                        then: { $multiply: ["$$this.score", 0.10] }
+                      },
+                      {
+                        case: { $eq: ["$$this.type", "quiz"] },
+                        then: { $multiply: ["$$this.score", 0.25] }
+                      }
+                    ],
+                    default: 0
+                  }
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      $group: {
+        _id: null,
+        totalLearners: { $sum: 1 },
+        learnersAbove50: {
+          $sum: {
+            $cond: [{ $gt: ["$weightedScore", 50] }, 1, 0]
+          }
+        }
+      }
+    },
+    {
+      $project: {
+        _id: 0,
+        totalLearners: 1,
+        learnersAbove50: 1,
+        percentageAbove50: {
+          $multiply: [
+            { $divide: ["$learnersAbove50", "$totalLearners"] },
+            100
+          ]
+        }
+      }
+    }
+  ];
+
+  try {
+    const result = await collection.aggregate(pipeline).toArray();
+    
+    // If no results, return default values
+    if (result.length === 0) {
+      return res.status(200).send({ totalLearners: 0, learnersAbove50: 0, percentageAbove50: 0 });
+    }
+
+    res.status(200).send(result[0]);
   } catch (error) {
     res.status(500).send("Error calculating statistics");
   }
